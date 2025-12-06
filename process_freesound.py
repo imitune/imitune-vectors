@@ -8,6 +8,9 @@ Process the FreeSound-LAION-640k dataset:
 """
 
 import os
+# Disable torchcodec to avoid compatibility issues - use soundfile instead
+os.environ["HF_AUDIO_DECODER"] = "soundfile"
+
 import json
 import getpass
 from pathlib import Path
@@ -17,13 +20,14 @@ import numpy as np
 import onnxruntime as ort
 import soundfile as sf
 import librosa
+import datasets
 from datasets import load_dataset
 from tqdm import tqdm
 from pinecone import Pinecone
 
 # --- Configuration ---
-MODEL_PATH = "model_v1.onnx"
-OUTPUT_JSON = "freesound_embeddings.json"
+MODEL_PATH = Path("model_v1.onnx")
+OUTPUT_JSON = Path("freesound_embeddings.json")
 INDEX_NAME = "imitune-search"
 SAMPLE_RATE = 16000  # Standard for audio embeddings
 MAX_DURATION_SECONDS = 20
@@ -75,8 +79,7 @@ EXCLUDED_TAGS = {
     
     # Music genres/styles (additional)
     "soundtrack", "score", "composition", "arrangement",
-    "verse", "chorus", "bridge", "intro", "outro",
-    "acoustic", "electric", "unplugged",
+    "verse", "chorus",
 }
 
 
@@ -148,6 +151,11 @@ def create_onnx_session(model_path: Path) -> ort.InferenceSession:
     
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    # Set thread count explicitly to avoid pthread_setaffinity_np warnings on HPC clusters
+    sess_options.intra_op_num_threads = 1
+    sess_options.inter_op_num_threads = 1
+    # Suppress shape mismatch warnings (we handle reshaping ourselves)
+    sess_options.log_severity_level = 3  # 3 = Error only, suppresses warnings
     
     session = ort.InferenceSession(
         str(model_path),
@@ -159,20 +167,39 @@ def create_onnx_session(model_path: Path) -> ort.InferenceSession:
     active_provider = session.get_providers()[0]
     print(f"ONNX Runtime using: {active_provider}")
     
+    # Print model input/output info for debugging
+    input_info = session.get_inputs()[0]
+    output_info = session.get_outputs()[0]
+    print(f"   Model input:  {input_info.name} {input_info.shape}")
+    print(f"   Model output: {output_info.name} {output_info.shape}")
+    
     return session
 
 
 def extract_embeddings_batch(session: ort.InferenceSession, 
                               waveforms: list[np.ndarray]) -> np.ndarray:
     """Extract embeddings for a batch of waveforms."""
-    # Stack waveforms into batch
+    # Stack waveforms into batch: (batch_size, samples)
     batch = np.stack(waveforms, axis=0).astype(np.float32)
     
+    # Check model's expected input shape
+    input_info = session.get_inputs()[0]
+    expected_dims = len(input_info.shape)
+    
+    # Add leading dimension if model expects 3D input (1, batch, samples)
+    if expected_dims == 3 and len(batch.shape) == 2:
+        batch = np.expand_dims(batch, axis=0)  # (1, batch_size, samples)
+    
     # Run inference
-    input_name = session.get_inputs()[0].name
+    input_name = input_info.name
     output_name = session.get_outputs()[0].name
     
     embeddings = session.run([output_name], {input_name: batch})[0]
+    
+    # Handle different output shapes
+    # Model outputs (1, batch_size, embedding_dim) -> squeeze to (batch_size, embedding_dim)
+    if len(embeddings.shape) == 3 and embeddings.shape[0] == 1:
+        embeddings = embeddings.squeeze(0)
     
     return embeddings
 
@@ -203,7 +230,7 @@ def process_dataset():
         "benjamin-paine/freesound-laion-640k",
         split="train",
         streaming=True  # Use streaming to avoid downloading all at once
-    )
+    ).cast_column("audio", datasets.Audio(sampling_rate=SAMPLE_RATE, decode=True))
     
     # Process and filter
     print("\n3. Processing and filtering clips...")
@@ -221,12 +248,21 @@ def process_dataset():
         "filtered_tags": 0,
         "failed_audio": 0,
         "successful": 0,
+        "last_checkpoint": 0,  # Track last checkpoint to avoid duplicate saves
     }
+    
+    CHECKPOINT_INTERVAL = 1000  # Save every 1000 successful embeddings
     
     # Create output directory
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     
-    progress = tqdm(dataset, desc="Processing clips")
+    progress = tqdm(
+        dataset, 
+        desc="Processing",
+        unit=" clips",
+        dynamic_ncols=True,
+        bar_format="{l_bar}{bar}| {n_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}"
+    )
     
     for item in progress:
         stats["total_processed"] += 1
@@ -311,17 +347,21 @@ def process_dataset():
             batch_waveforms = []
             batch_metadata = []
         
-        # Update progress
-        progress.set_postfix({
-            "kept": stats["successful"],
-            "filtered": stats["filtered_tags"] + stats["filtered_duration"]
-        })
+        # Update progress with detailed stats
+        keep_rate = (stats["successful"] / stats["total_processed"] * 100) if stats["total_processed"] > 0 else 0
+        progress.set_postfix_str(
+            f"✓ {stats['successful']:,} kept | "
+            f"✗ {stats['filtered_tags'] + stats['filtered_duration']:,} filtered | "
+            f"⚠ {stats['failed_audio']} failed | "
+            f"({keep_rate:.1f}% keep rate)"
+        )
         
-        # Save periodically (every 10000 successful embeddings)
-        if stats["successful"] > 0 and stats["successful"] % 10000 == 0:
-            print(f"\n   Checkpoint: Saving {len(embeddings_data)} embeddings...")
+        # Save checkpoint periodically
+        if stats["successful"] > 0 and stats["successful"] - stats["last_checkpoint"] >= CHECKPOINT_INTERVAL:
+            progress.write(f"   💾 Checkpoint: Saving {len(embeddings_data):,} embeddings...")
             with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
                 json.dump(embeddings_data, f)
+            stats["last_checkpoint"] = stats["successful"]
     
     # Process remaining batch
     if batch_waveforms:
