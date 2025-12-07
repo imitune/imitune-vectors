@@ -209,6 +209,11 @@ def construct_freesound_url(username: str, sound_id: int) -> str:
     return f"https://freesound.org/people/{username}/sounds/{sound_id}/"
 
 
+def construct_freesound_embed_url(sound_id: int) -> str:
+    """Construct FreeSound embed/player URL from ID."""
+    return f"https://freesound.org/s/{sound_id}/"
+
+
 def process_dataset():
     """Main processing function."""
     print("=" * 60)
@@ -270,7 +275,7 @@ def process_dataset():
         # Get metadata
         tags = item.get("tags", [])
         username = item.get("username", "")
-        sound_id = item.get("id", 0)
+        sound_id = item.get("sound_id", 0)
         
         # Filter by tags
         if should_exclude(tags):
