@@ -15,4 +15,5 @@ module load cuda/12.6.2-gcc-12.2.0
 module load cudnn/9.2.0.82-12-cuda-12.6.2-gcc-12.2.0
 module load ffmpeg
 
+cd imitune-vectors
 python process_freesound.py --process-only
