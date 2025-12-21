@@ -33,7 +33,7 @@ INDEX_NAME = "imitune-search"
 SAMPLE_RATE = 16000  # Standard for audio embeddings
 MAX_DURATION_SECONDS = 20
 CLIP_DURATION_SECONDS = 10  # Extract embeddings from first 10 seconds
-BATCH_SIZE = 32  # For GPU inference
+BATCH_SIZE = 64  # For GPU inference
 
 # AudioSet ontology tags to filter out (speech, singing, music related)
 # These are based on the AudioSet ontology - we match against lowercase tag names
