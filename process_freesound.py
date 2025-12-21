@@ -8,22 +8,23 @@ Process the FreeSound-LAION-640k dataset:
 """
 
 import os
+
 # Disable torchcodec to avoid compatibility issues - use soundfile instead
 os.environ["HF_AUDIO_DECODER"] = "soundfile"
 
-import json
 import getpass
+import json
 from pathlib import Path
 from typing import Optional
 
+import datasets
+import librosa
 import numpy as np
 import onnxruntime as ort
 import soundfile as sf
-import librosa
-import datasets
 from datasets import load_dataset
-from tqdm import tqdm
 from pinecone import Pinecone
+from tqdm import tqdm
 
 # --- Configuration ---
 MODEL_PATH = Path("model_v1.onnx")
@@ -38,67 +39,234 @@ BATCH_SIZE = 32  # For GPU inference
 # These are based on the AudioSet ontology - we match against lowercase tag names
 EXCLUDED_TAGS = {
     # Human voice/speech related
-    "speech", "speaking", "talk", "talking", "voice", "voices", "vocal", "vocals",
-    "male speech", "female speech", "child speech", "man speaking", "woman speaking",
-    "kid speaking", "conversation", "narration", "monologue", "babbling",
-    "speech synthesizer", "shout", "shouting", "scream", "screaming", "yell", "yelling",
-    "whisper", "whispering", "laughter", "laugh", "laughing", "giggle", "chuckle",
-    "cry", "crying", "sobbing", "whimper", "sigh", "humming",
-    "crowd", "chatter", "hubbub", "speech noise", "speech babble",
-    "children shouting", "cheering",
-    
+    "speech",
+    "speaking",
+    "talk",
+    "talking",
+    "voice",
+    "voices",
+    "vocal",
+    "vocals",
+    "male speech",
+    "female speech",
+    "child speech",
+    "man speaking",
+    "woman speaking",
+    "kid speaking",
+    "conversation",
+    "narration",
+    "monologue",
+    "babbling",
+    "speech synthesizer",
+    "shout",
+    "shouting",
+    "scream",
+    "screaming",
+    "yell",
+    "yelling",
+    "whisper",
+    "whispering",
+    "laughter",
+    "laugh",
+    "laughing",
+    "giggle",
+    "chuckle",
+    "cry",
+    "crying",
+    "sobbing",
+    "whimper",
+    "sigh",
+    "humming",
+    "crowd",
+    "chatter",
+    "hubbub",
+    "speech noise",
+    "speech babble",
+    "children shouting",
+    "cheering",
     # Singing related
-    "singing", "sing", "singer", "song", "vocal music", "a capella", "acapella",
-    "choir", "choral", "yodeling", "chant", "chanting", "mantra",
-    "male singing", "female singing", "child singing", "synthetic singing",
-    "rapping", "rap", "rapper", "beatbox", "beatboxing",
-    "opera", "lullaby",
-    
+    "singing",
+    "sing",
+    "singer",
+    "song",
+    "vocal music",
+    "a capella",
+    "acapella",
+    "choir",
+    "choral",
+    "yodeling",
+    "chant",
+    "chanting",
+    "mantra",
+    "male singing",
+    "female singing",
+    "child singing",
+    "synthetic singing",
+    "rapping",
+    "rap",
+    "rapper",
+    "beatbox",
+    "beatboxing",
+    "opera",
+    "lullaby",
     # Music related
-    "music", "musical", "melody", "melodic", "harmonic", "harmony",
-    "instrument", "instrumental", "orchestra", "orchestral", "band",
-    "guitar", "acoustic guitar", "electric guitar", "bass guitar",
-    "piano", "keyboard", "organ", "synthesizer", "synth",
-    "violin", "fiddle", "viola", "cello", "double bass", "string",
-    "trumpet", "trombone", "horn", "french horn", "tuba", "brass",
-    "flute", "clarinet", "oboe", "bassoon", "saxophone", "sax", "woodwind",
-    "drum", "drums", "drummer", "drumming", "percussion", "percussive",
-    "cymbal", "hi-hat", "snare", "kick", "tom",
-    "bass", "beat", "beats", "rhythm", "rhythmic",
-    "chord", "chords", "riff", "solo",
-    "rock", "pop", "jazz", "blues", "classical", "electronic", "techno",
-    "house", "hip-hop", "hip hop", "r&b", "country", "folk", "metal",
-    "punk", "reggae", "soul", "funk", "disco", "edm", "dubstep", "trap",
-    "ambient music", "new age", "world music",
-    "loop", "sample", "bpm",
-    "banjo", "ukulele", "mandolin", "harp", "sitar", "harmonica",
-    "accordion", "bagpipe", "didgeridoo",
-    "xylophone", "marimba", "vibraphone", "glockenspiel", "tubular bells",
-    "timpani", "bongo", "conga", "djembe", "tabla",
-    "jingle", "bell", "chime", "gong",
-    
+    "music",
+    "musical",
+    "melody",
+    "melodic",
+    "harmonic",
+    "harmony",
+    "instrument",
+    "instrumental",
+    "orchestra",
+    "orchestral",
+    "band",
+    "guitar",
+    "acoustic guitar",
+    "electric guitar",
+    "bass guitar",
+    "piano",
+    "keyboard",
+    "organ",
+    "synthesizer",
+    "synth",
+    "violin",
+    "fiddle",
+    "viola",
+    "cello",
+    "double bass",
+    "string",
+    "trumpet",
+    "trombone",
+    "horn",
+    "french horn",
+    "tuba",
+    "brass",
+    "flute",
+    "clarinet",
+    "oboe",
+    "bassoon",
+    "saxophone",
+    "sax",
+    "woodwind",
+    "drum",
+    "drums",
+    "drummer",
+    "drumming",
+    "percussion",
+    "percussive",
+    "cymbal",
+    "hi-hat",
+    "snare",
+    "kick",
+    "tom",
+    "bass",
+    "beat",
+    "beats",
+    "rhythm",
+    "rhythmic",
+    "chord",
+    "chords",
+    "riff",
+    "solo",
+    "rock",
+    "pop",
+    "jazz",
+    "blues",
+    "classical",
+    "electronic",
+    "techno",
+    "house",
+    "hip-hop",
+    "hip hop",
+    "r&b",
+    "country",
+    "folk",
+    "metal",
+    "punk",
+    "reggae",
+    "soul",
+    "funk",
+    "disco",
+    "edm",
+    "dubstep",
+    "trap",
+    "ambient music",
+    "new age",
+    "world music",
+    "loop",
+    "sample",
+    "bpm",
+    "banjo",
+    "ukulele",
+    "mandolin",
+    "harp",
+    "sitar",
+    "harmonica",
+    "accordion",
+    "bagpipe",
+    "didgeridoo",
+    "xylophone",
+    "marimba",
+    "vibraphone",
+    "glockenspiel",
+    "tubular bells",
+    "timpani",
+    "bongo",
+    "conga",
+    "djembe",
+    "tabla",
+    "jingle",
+    "bell",
+    "chime",
+    "gong",
     # Music genres/styles (additional)
-    "soundtrack", "score", "composition", "arrangement",
-    "verse", "chorus",
+    "soundtrack",
+    "score",
+    "composition",
+    "arrangement",
+    "verse",
+    "chorus",
 }
 
 
-def should_exclude(tags: list[str]) -> bool:
+def load_excluded_tags(tags_file: Optional[str] = None) -> set[str]:
+    """Load excluded tags from a file or return hardcoded defaults."""
+    if tags_file:
+        try:
+            with open(tags_file, "r", encoding="utf-8") as f:
+                tags = {line.strip().lower() for line in f if line.strip()}
+            print(f"   Loaded {len(tags)} excluded tags from {tags_file}")
+            return tags
+        except FileNotFoundError:
+            print(
+                f"   Warning: Tags file {tags_file} not found, using hardcoded defaults"
+            )
+        except Exception as e:
+            print(
+                f"   Warning: Error loading tags file {tags_file}: {e}, using hardcoded defaults"
+            )
+
+    # Return hardcoded defaults
+    return EXCLUDED_TAGS
+
+
+def should_exclude(tags: list[str], excluded_tags: set[str]) -> bool:
     """Check if any tag matches our exclusion list."""
     if not tags:
         return False
-    
+
     tags_lower = {t.lower().strip() for t in tags}
-    
+
     for tag in tags_lower:
         # Direct match
-        if tag in EXCLUDED_TAGS:
+        if tag in excluded_tags:
             return True
         # Partial match - if any excluded term is contained in the tag
-        for excluded in EXCLUDED_TAGS:
+        for excluded in excluded_tags:
             if excluded in tag or tag in excluded:
                 return True
-    
+
     return False
 
 
@@ -106,6 +274,7 @@ def get_audio_duration(audio_bytes: bytes) -> Optional[float]:
     """Get duration of audio from bytes."""
     try:
         import io
+
         with io.BytesIO(audio_bytes) as f:
             info = sf.info(f)
             return info.duration
@@ -113,33 +282,39 @@ def get_audio_duration(audio_bytes: bytes) -> Optional[float]:
         return None
 
 
-def load_and_preprocess_audio(audio_bytes: bytes, target_sr: int = SAMPLE_RATE, 
-                               max_duration: float = CLIP_DURATION_SECONDS) -> Optional[np.ndarray]:
+def load_and_preprocess_audio(
+    audio_bytes: bytes,
+    target_sr: int = SAMPLE_RATE,
+    max_duration: float = CLIP_DURATION_SECONDS,
+) -> Optional[np.ndarray]:
     """Load audio bytes, resample, and trim to max_duration."""
     try:
         import io
+
         with io.BytesIO(audio_bytes) as f:
-            waveform, sr = sf.read(f, dtype='float32')
-        
+            waveform, sr = sf.read(f, dtype="float32")
+
         # Convert stereo to mono if needed
         if len(waveform.shape) > 1:
             waveform = np.mean(waveform, axis=1)
-        
+
         # Resample if needed
         if sr != target_sr:
             waveform = librosa.resample(waveform, orig_sr=sr, target_sr=target_sr)
-        
+
         # Trim to max_duration (first N seconds)
         max_samples = int(max_duration * target_sr)
         if len(waveform) > max_samples:
             waveform = waveform[:max_samples]
-        
+
         # Pad if shorter than max_duration
         if len(waveform) < max_samples:
-            waveform = np.pad(waveform, (0, max_samples - len(waveform)), mode='constant')
-        
+            waveform = np.pad(
+                waveform, (0, max_samples - len(waveform)), mode="constant"
+            )
+
         return waveform.astype(np.float32)
-    
+
     except Exception as e:
         print(f"Error loading audio: {e}")
         return None
@@ -147,8 +322,8 @@ def load_and_preprocess_audio(audio_bytes: bytes, target_sr: int = SAMPLE_RATE,
 
 def create_onnx_session(model_path: Path) -> ort.InferenceSession:
     """Create ONNX inference session with GPU support."""
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    
+    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     # Set thread count explicitly to avoid pthread_setaffinity_np warnings on HPC clusters
@@ -156,51 +331,50 @@ def create_onnx_session(model_path: Path) -> ort.InferenceSession:
     sess_options.inter_op_num_threads = 1
     # Suppress shape mismatch warnings (we handle reshaping ourselves)
     sess_options.log_severity_level = 3  # 3 = Error only, suppresses warnings
-    
+
     session = ort.InferenceSession(
-        str(model_path),
-        sess_options=sess_options,
-        providers=providers
+        str(model_path), sess_options=sess_options, providers=providers
     )
-    
+
     # Check which provider is being used
     active_provider = session.get_providers()[0]
     print(f"ONNX Runtime using: {active_provider}")
-    
+
     # Print model input/output info for debugging
     input_info = session.get_inputs()[0]
     output_info = session.get_outputs()[0]
     print(f"   Model input:  {input_info.name} {input_info.shape}")
     print(f"   Model output: {output_info.name} {output_info.shape}")
-    
+
     return session
 
 
-def extract_embeddings_batch(session: ort.InferenceSession, 
-                              waveforms: list[np.ndarray]) -> np.ndarray:
+def extract_embeddings_batch(
+    session: ort.InferenceSession, waveforms: list[np.ndarray]
+) -> np.ndarray:
     """Extract embeddings for a batch of waveforms."""
     # Stack waveforms into batch: (batch_size, samples)
     batch = np.stack(waveforms, axis=0).astype(np.float32)
-    
+
     # Check model's expected input shape
     input_info = session.get_inputs()[0]
     expected_dims = len(input_info.shape)
-    
+
     # Add leading dimension if model expects 3D input (1, batch, samples)
     if expected_dims == 3 and len(batch.shape) == 2:
         batch = np.expand_dims(batch, axis=0)  # (1, batch_size, samples)
-    
+
     # Run inference
     input_name = input_info.name
     output_name = session.get_outputs()[0].name
-    
+
     embeddings = session.run([output_name], {input_name: batch})[0]
-    
+
     # Handle different output shapes
     # Model outputs (1, batch_size, embedding_dim) -> squeeze to (batch_size, embedding_dim)
     if len(embeddings.shape) == 3 and embeddings.shape[0] == 1:
         embeddings = embeddings.squeeze(0)
-    
+
     return embeddings
 
 
@@ -214,39 +388,39 @@ def construct_freesound_embed_url(sound_id: int) -> str:
     return f"https://freesound.org/s/{sound_id}/"
 
 
-def process_dataset():
+def process_dataset(excluded_tags: set[str]):
     """Main processing function."""
     print("=" * 60)
     print("FreeSound-LAION-640k Dataset Processor")
     print("=" * 60)
-    
+
     # Load ONNX model
     print(f"\n1. Loading ONNX model from {MODEL_PATH}...")
     if not MODEL_PATH.exists():
         raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
-    
+
     session = create_onnx_session(MODEL_PATH)
-    
+
     # Load dataset
     print("\n2. Loading dataset from HuggingFace...")
     print("   Dataset: benjamin-paine/freesound-laion-640k")
-    
+
     dataset = load_dataset(
         "benjamin-paine/freesound-laion-640k",
         split="train",
-        streaming=True  # Use streaming to avoid downloading all at once
+        streaming=True,  # Use streaming to avoid downloading all at once
     ).cast_column("audio", datasets.Audio(sampling_rate=SAMPLE_RATE, decode=True))
-    
+
     # Process and filter
     print("\n3. Processing and filtering clips...")
     print(f"   - Max duration: {MAX_DURATION_SECONDS}s")
     print(f"   - Clip duration for embedding: {CLIP_DURATION_SECONDS}s")
-    print(f"   - Filtering out speech, singing, and music")
-    
+    print(f"   - Filtering out speech, singing, and music ({len(excluded_tags)} tags)")
+
     embeddings_data = []
     batch_waveforms = []
     batch_metadata = []
-    
+
     stats = {
         "total_processed": 0,
         "filtered_duration": 0,
@@ -255,141 +429,162 @@ def process_dataset():
         "successful": 0,
         "last_checkpoint": 0,  # Track last checkpoint to avoid duplicate saves
     }
-    
+
     CHECKPOINT_INTERVAL = 1000  # Save every 1000 successful embeddings
-    
+
     # Create output directory
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    
+
     progress = tqdm(
-        dataset, 
+        dataset,
         desc="Processing",
         unit=" clips",
         dynamic_ncols=True,
-        bar_format="{l_bar}{bar}| {n_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}"
+        bar_format="{l_bar}{bar}| {n_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
     )
-    
+
     for item in progress:
         stats["total_processed"] += 1
-        
+
         # Get metadata
         tags = item.get("tags", [])
         username = item.get("username", "")
         sound_id = item.get("sound_id", 0)
-        
+
         # Filter by tags
-        if should_exclude(tags):
+        if should_exclude(tags, excluded_tags):
             stats["filtered_tags"] += 1
             continue
-        
+
         # Get audio data
         audio_data = item.get("audio", {})
         if not audio_data:
             stats["failed_audio"] += 1
             continue
-        
+
         # Check audio format - datasets library provides audio as dict with 'array' and 'sampling_rate'
         if isinstance(audio_data, dict):
             waveform = audio_data.get("array")
             sr = audio_data.get("sampling_rate", SAMPLE_RATE)
-            
+
             if waveform is None:
                 stats["failed_audio"] += 1
                 continue
-            
+
             waveform = np.array(waveform, dtype=np.float32)
-            
+
             # Calculate duration
             duration = len(waveform) / sr
-            
+
             # Filter by duration
             if duration > MAX_DURATION_SECONDS:
                 stats["filtered_duration"] += 1
                 continue
-            
+
             # Resample if needed
             if sr != SAMPLE_RATE:
                 waveform = librosa.resample(waveform, orig_sr=sr, target_sr=SAMPLE_RATE)
-            
+
             # Convert stereo to mono if needed
             if len(waveform.shape) > 1:
                 waveform = np.mean(waveform, axis=1)
-            
+
             # Pad/trim to clip duration
             max_samples = int(CLIP_DURATION_SECONDS * SAMPLE_RATE)
             if len(waveform) > max_samples:
                 waveform = waveform[:max_samples]
             elif len(waveform) < max_samples:
-                waveform = np.pad(waveform, (0, max_samples - len(waveform)), mode='constant')
+                waveform = np.pad(
+                    waveform, (0, max_samples - len(waveform)), mode="constant"
+                )
         else:
             stats["failed_audio"] += 1
             continue
-        
+
         # Add to batch
         batch_waveforms.append(waveform)
-        batch_metadata.append({
-            "username": username,
-            "sound_id": sound_id,
-        })
-        
+        batch_metadata.append(
+            {
+                "username": username,
+                "sound_id": sound_id,
+            }
+        )
+
         # Process batch when full
         if len(batch_waveforms) >= BATCH_SIZE:
             try:
                 embeddings = extract_embeddings_batch(session, batch_waveforms)
-                
+
                 for i, (emb, meta) in enumerate(zip(embeddings, batch_metadata)):
                     idx = stats["successful"] + 1
-                    embeddings_data.append({
-                        "id": f"{idx:012d}",
-                        "embedding": emb.tolist(),
-                        "freesound_url": construct_freesound_url(meta["username"], meta["sound_id"])
-                    })
+                    embeddings_data.append(
+                        {
+                            "id": f"{idx:012d}",
+                            "embedding": emb.tolist(),
+                            "freesound_url": construct_freesound_url(
+                                meta["username"], meta["sound_id"]
+                            ),
+                        }
+                    )
                     stats["successful"] += 1
-                
+
             except Exception as e:
                 print(f"\nError processing batch: {e}")
-            
+
             batch_waveforms = []
             batch_metadata = []
-        
+
         # Update progress with detailed stats
-        keep_rate = (stats["successful"] / stats["total_processed"] * 100) if stats["total_processed"] > 0 else 0
+        keep_rate = (
+            (stats["successful"] / stats["total_processed"] * 100)
+            if stats["total_processed"] > 0
+            else 0
+        )
         progress.set_postfix_str(
             f"✓ {stats['successful']:,} kept | "
             f"✗ {stats['filtered_tags'] + stats['filtered_duration']:,} filtered | "
             f"⚠ {stats['failed_audio']} failed | "
             f"({keep_rate:.1f}% keep rate)"
         )
-        
+
         # Save checkpoint periodically
-        if stats["successful"] > 0 and stats["successful"] - stats["last_checkpoint"] >= CHECKPOINT_INTERVAL:
-            progress.write(f"   💾 Checkpoint: Saving {len(embeddings_data):,} embeddings...")
+        if (
+            stats["successful"] > 0
+            and stats["successful"] - stats["last_checkpoint"] >= CHECKPOINT_INTERVAL
+        ):
+            progress.write(
+                f"   💾 Checkpoint: Saving {len(embeddings_data):,} embeddings..."
+            )
             with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
                 json.dump(embeddings_data, f)
             stats["last_checkpoint"] = stats["successful"]
-    
+
     # Process remaining batch
     if batch_waveforms:
         try:
             embeddings = extract_embeddings_batch(session, batch_waveforms)
-            
+
             for i, (emb, meta) in enumerate(zip(embeddings, batch_metadata)):
                 idx = stats["successful"] + 1
-                embeddings_data.append({
-                    "id": f"{idx:012d}",
-                    "embedding": emb.tolist(),
-                    "freesound_url": construct_freesound_url(meta["username"], meta["sound_id"])
-                })
+                embeddings_data.append(
+                    {
+                        "id": f"{idx:012d}",
+                        "embedding": emb.tolist(),
+                        "freesound_url": construct_freesound_url(
+                            meta["username"], meta["sound_id"]
+                        ),
+                    }
+                )
                 stats["successful"] += 1
-        
+
         except Exception as e:
             print(f"\nError processing final batch: {e}")
-    
+
     # Save final results
     print(f"\n4. Saving {len(embeddings_data)} embeddings to {OUTPUT_JSON}...")
     with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
         json.dump(embeddings_data, f)
-    
+
     # Print stats
     print("\n" + "=" * 60)
     print("Processing Statistics:")
@@ -400,55 +595,56 @@ def process_dataset():
     print(f"  Failed audio:         {stats['failed_audio']:,}")
     print(f"  Successful:           {stats['successful']:,}")
     print("=" * 60)
-    
+
     return embeddings_data
 
 
 def upload_to_pinecone(embeddings_data: Optional[list] = None):
     """Upload embeddings to Pinecone."""
     print("\n5. Uploading to Pinecone...")
-    
+
     if embeddings_data is None:
         if not OUTPUT_JSON.exists():
             print(f"Error: {OUTPUT_JSON} not found. Run processing first.")
             return
-        
+
         print(f"   Loading embeddings from {OUTPUT_JSON}...")
         with open(OUTPUT_JSON, "r", encoding="utf-8") as f:
             embeddings_data = json.load(f)
-    
+
     print(f"   Total embeddings to upload: {len(embeddings_data):,}")
-    
+
     # Get API key
     api_key = os.getenv("PINECONE_API_KEY") or getpass.getpass("Pinecone API Key: ")
     if not api_key:
         raise ValueError("Pinecone API Key is required")
-    
+
     # Connect to Pinecone
     pc = Pinecone(api_key=api_key)
     index = pc.Index(INDEX_NAME)
     print(f"   Connected to index: {INDEX_NAME}")
-    
+
     # Upsert in batches
     batch_size = 100
     print(f"   Uploading in batches of {batch_size}...")
-    
+
     for i in tqdm(range(0, len(embeddings_data), batch_size), desc="Uploading"):
-        batch = embeddings_data[i:i + batch_size]
-        
-        vectors_to_upsert = [{
-            "id": item["id"],
-            "values": item["embedding"],
-            "metadata": {
-                "freesound_url": item["freesound_url"]
+        batch = embeddings_data[i : i + batch_size]
+
+        vectors_to_upsert = [
+            {
+                "id": item["id"],
+                "values": item["embedding"],
+                "metadata": {"freesound_url": item["freesound_url"]},
             }
-        } for item in batch]
-        
+            for item in batch
+        ]
+
         try:
             index.upsert(vectors=vectors_to_upsert)
         except Exception as e:
             print(f"\nError upserting batch {i // batch_size + 1}: {e}")
-    
+
     print("\n   Upload complete!")
     print(index.describe_index_stats())
 
@@ -456,29 +652,37 @@ def upload_to_pinecone(embeddings_data: Optional[list] = None):
 def main():
     """Main entry point."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Process FreeSound-LAION-640k dataset and upload to Pinecone"
     )
     parser.add_argument(
         "--upload-only",
         action="store_true",
-        help="Skip processing, only upload existing embeddings to Pinecone"
+        help="Skip processing, only upload existing embeddings to Pinecone",
     )
     parser.add_argument(
         "--process-only",
         action="store_true",
-        help="Only process dataset, skip Pinecone upload"
+        help="Only process dataset, skip Pinecone upload",
     )
-    
+    parser.add_argument(
+        "--tags-file",
+        type=str,
+        default=None,
+        help="Path to text file with tags to exclude (one per line). If not provided, uses hardcoded defaults.",
+    )
+
     args = parser.parse_args()
-    
+
     if args.upload_only:
         upload_to_pinecone()
     elif args.process_only:
-        process_dataset()
+        excluded_tags = load_excluded_tags(args.tags_file)
+        process_dataset(excluded_tags)
     else:
-        embeddings_data = process_dataset()
+        excluded_tags = load_excluded_tags(args.tags_file)
+        embeddings_data = process_dataset(excluded_tags)
         upload_to_pinecone(embeddings_data)
 
 
