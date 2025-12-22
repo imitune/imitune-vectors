@@ -378,14 +378,14 @@ def extract_embeddings_batch(
     return embeddings
 
 
-def construct_freesound_url(username: str, sound_id: int) -> str:
-    """Construct FreeSound URL from username and ID."""
-    return f"https://freesound.org/people/{username}/sounds/{sound_id}/"
+def construct_freesound_url(username: str, freesound_id: int) -> str:
+    """Construct FreeSound URL from username and FreeSound ID."""
+    return f"https://freesound.org/people/{username}/sounds/{freesound_id}/"
 
 
-def construct_freesound_embed_url(sound_id: int) -> str:
+def construct_freesound_embed_url(freesound_id: int) -> str:
     """Construct FreeSound embed/player URL from ID."""
-    return f"https://freesound.org/s/{sound_id}/"
+    return f"https://freesound.org/s/{freesound_id}/"
 
 
 def process_dataset(excluded_tags: set[str]):
@@ -449,7 +449,7 @@ def process_dataset(excluded_tags: set[str]):
         # Get metadata
         tags = item.get("tags", [])
         username = item.get("username", "")
-        sound_id = item.get("sound_id", 0)
+        freesound_id = item.get("freesound_id", 0)
 
         # Filter by tags
         if should_exclude(tags, excluded_tags):
@@ -506,7 +506,7 @@ def process_dataset(excluded_tags: set[str]):
         batch_metadata.append(
             {
                 "username": username,
-                "sound_id": sound_id,
+                "freesound_id": freesound_id,
             }
         )
 
@@ -522,7 +522,7 @@ def process_dataset(excluded_tags: set[str]):
                             "id": f"{idx:012d}",
                             "embedding": emb.tolist(),
                             "freesound_url": construct_freesound_url(
-                                meta["username"], meta["sound_id"]
+                                meta["username"], meta["freesound_id"]
                             ),
                         }
                     )
@@ -571,7 +571,7 @@ def process_dataset(excluded_tags: set[str]):
                         "id": f"{idx:012d}",
                         "embedding": emb.tolist(),
                         "freesound_url": construct_freesound_url(
-                            meta["username"], meta["sound_id"]
+                            meta["username"], meta["freesound_id"]
                         ),
                     }
                 )
