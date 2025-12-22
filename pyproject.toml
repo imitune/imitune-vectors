@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 process-freesound = "process_freesound:main"
 test-freesound-urls = "test_urls:main"
+check-freesound-urls = "check_freesound_urls:main"
 
 [tool.uv]
 dev-dependencies = []
