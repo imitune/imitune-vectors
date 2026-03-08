@@ -2,14 +2,15 @@
 #SBATCH -J imitune_fsd50k
 #SBATCH -p gpushort
 #SBATCH -n 8
-#SBATCH -t 72:0:0
-#SBATCH --mem-per-cpu=16G
+#SBATCH -t 1:0:0
+#SBATCH --mem-per-cpu=11G
 #SBATCH --gres=gpu:1
 #SBATCH -o %x.o%j
 #SBATCH -e %x.e%j
 
-# If you have access to restricted GPU partitions, submit with:
-# sbatch -p gpu -A pilot_gpu run_fsd50k.sh
+# gpushort is for short runs.
+# For long runs on Apocrita restricted GPU nodes, submit with:
+# sbatch -p gpu -A pilot_gpu -t 72:0:0 run_fsd50k.sh
 
 set -euo pipefail
 

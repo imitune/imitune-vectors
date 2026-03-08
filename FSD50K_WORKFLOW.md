@@ -73,6 +73,16 @@ export MODE=full
 sbatch run_fsd50k.sh
 ```
 
+`run_fsd50k.sh` defaults to `gpushort` with `1:0:0` walltime (short queue).
+
+For long GPU runs on Apocrita, use the restricted pair from QMUL docs:
+
+```bash
+sbatch -p gpu -A pilot_gpu -t 72:0:0 run_fsd50k.sh
+```
+
+The script uses QMUL's standard single-GPU template: `-p gpushort`, `-n 8`, `--gres=gpu:1`, `--mem-per-cpu=11G`.
+
 If your group has access to the restricted GPU partition/account pair, submit with:
 
 ```bash
