@@ -1,13 +1,15 @@
 #!/bin/bash
-#$ -l h_rt=240:0:0
-#$ -l h_vmem=11G
-#$ -pe smp 8
-#$ -l gpu=1
-#$ -l gpu_type=ampere
-#$ -cwd
-#$ -j y
+#SBATCH -J imitune_laion
+#SBATCH -p gpu
+#SBATCH -A pilot_gpu
+#SBATCH -n 8
+#SBATCH -t 240:0:0
+#SBATCH --mem-per-cpu=11G
+#SBATCH --gres=gpu:1
+#SBATCH -o %x.o%j
+#SBATCH -e %x.e%j
 
-set -e
+set -euo pipefail
 
 module load miniforge
 conda activate imitune
