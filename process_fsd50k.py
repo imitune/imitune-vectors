@@ -33,7 +33,9 @@ from process_freesound import (
 
 DEFAULT_OUTPUT_JSON = Path("fsd50k_embeddings.json")
 DEFAULT_INDEX_NAME = "imitune-fsd50k"
-DEFAULT_FSD50K_ROOT = Path(os.getenv("FSD50K_ROOT", "FSD50K"))
+DEFAULT_FSD50K_ROOT = Path(
+    os.getenv("FSD50K_ROOT", f"/gpfs/scratch/{os.getenv('USER', 'unknown')}/FSD50K")
+)
 
 
 def find_required_path(root: Path, relative: str, path_type: str = "dir") -> Path:

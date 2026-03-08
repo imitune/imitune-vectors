@@ -1,13 +1,15 @@
 #!/bin/bash
 #SBATCH -J imitune_fsd50k
-#SBATCH -p gpu
-#SBATCH -A pilot_gpu
+#SBATCH -p gpushort
 #SBATCH -n 8
 #SBATCH -t 72:0:0
 #SBATCH --mem-per-cpu=16G
 #SBATCH --gres=gpu:1
 #SBATCH -o %x.o%j
 #SBATCH -e %x.e%j
+
+# If you have access to restricted GPU partitions, submit with:
+# sbatch -p gpu -A pilot_gpu run_fsd50k.sh
 
 set -euo pipefail
 
@@ -20,7 +22,7 @@ module load ffmpeg
 cd /data/home/acw777/imitune-vectors
 
 # Configure these per run/environment:
-FSD50K_ROOT="${FSD50K_ROOT:-/data/home/acw777/datasets/FSD50K}"
+FSD50K_ROOT="${FSD50K_ROOT:-/gpfs/scratch/${USER}/FSD50K}"
 MODE="${MODE:-process-only}"  # process-only | upload-only | full
 TAGS_FILE="${TAGS_FILE:-}"
 

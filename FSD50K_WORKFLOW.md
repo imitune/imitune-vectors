@@ -68,12 +68,21 @@ python process_fsd50k.py \
 Use `run_fsd50k.sh` and set environment variables before `sbatch` if needed:
 
 ```bash
-export FSD50K_ROOT=/data/home/acw777/datasets/FSD50K
+export FSD50K_ROOT=/gpfs/scratch/$USER/FSD50K
 export MODE=full
 sbatch run_fsd50k.sh
 ```
 
+If your group has access to the restricted GPU partition/account pair, submit with:
+
+```bash
+sbatch -p gpu -A pilot_gpu run_fsd50k.sh
+```
+
+If you get `Invalid account or account/partition combination specified`, your account is not valid for that partition. Use the default script submission (`gpushort`) or your group's allowed `-p/-A` combination.
+
 Defaults:
 
+- FSD50K root: `/gpfs/scratch/$USER/FSD50K`
 - Output JSON: `fsd50k_embeddings.json`
 - Pinecone index: `imitune-fsd50k`

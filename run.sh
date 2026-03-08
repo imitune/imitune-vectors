@@ -1,13 +1,15 @@
 #!/bin/bash
 #SBATCH -J imitune_laion
-#SBATCH -p gpu
-#SBATCH -A pilot_gpu
+#SBATCH -p gpushort
 #SBATCH -n 8
 #SBATCH -t 240:0:0
 #SBATCH --mem-per-cpu=11G
 #SBATCH --gres=gpu:1
 #SBATCH -o %x.o%j
 #SBATCH -e %x.e%j
+
+# If you have access to restricted GPU partitions, submit with:
+# sbatch -p gpu -A pilot_gpu run.sh
 
 set -euo pipefail
 
