@@ -31,7 +31,7 @@ from process_freesound import (
     should_exclude,
 )
 
-DEFAULT_OUTPUT_JSON = Path("fsd50k_embeddings.json")
+DEFAULT_OUTPUT_FILENAME = "fsd50k_embeddings.json"
 DEFAULT_INDEX_NAME = "imitune-fsd50k"
 DEFAULT_FSD50K_ROOT = Path(
     os.getenv("FSD50K_ROOT", f"/gpfs/scratch/{os.getenv('USER', 'unknown')}/FSD50K")
@@ -129,11 +129,31 @@ def clip_url(clip_id: str) -> str:
     return f"https://freesound.org/s/{clip_id}/"
 
 
+def resolve_output_json_path(
+    fsd50k_root: Path,
+    output_json: Optional[Path] = None,
+) -> Path:
+    """Resolve the embeddings JSON output path.
+
+    By default, use a sibling directory named after the dataset root with a
+    `_vectors` suffix, e.g. `/path/FSD50K` -> `/path/FSD50K_vectors/fsd50k_embeddings.json`.
+    """
+    if output_json is not None:
+        return output_json
+
+    root_path = fsd50k_root.expanduser()
+    output_dir = root_path.parent / f"{root_path.name}_vectors"
+    return output_dir / DEFAULT_OUTPUT_FILENAME
+
+
 def process_fsd50k(
     excluded_labels: set[str],
     fsd50k_root: Path = DEFAULT_FSD50K_ROOT,
+    output_json: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
     """Extract embeddings from FSD50K and return records."""
+    output_json_path = resolve_output_json_path(fsd50k_root, output_json)
+
     print("=" * 60)
     print("FSD50K Processor")
     print("=" * 60)
@@ -207,9 +227,13 @@ def process_fsd50k(
     print(f"   Sample rate: {SAMPLE_RATE} Hz")
     print(f"   Clip duration for embedding: {CLIP_DURATION_SECONDS}s")
     print(f"   Batch size: {BATCH_SIZE}")
-    print(f"   Excluding speech/singing/music terms ({len(excluded_labels)} tags)")
+    print(f"   Output JSON: {output_json_path}")
+    if excluded_labels:
+        print(f"   Filtering enabled with {len(excluded_labels)} excluded tags")
+    else:
+        print("   Filtering disabled (no tags file provided)")
 
-    DEFAULT_OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    output_json_path.parent.mkdir(parents=True, exist_ok=True)
 
     stats = {
         "total": 0,
@@ -281,8 +305,8 @@ def process_fsd50k(
                 }
             )
 
-    print(f"\n5. Saving {len(embeddings_data):,} embeddings to {DEFAULT_OUTPUT_JSON}...")
-    with open(DEFAULT_OUTPUT_JSON, "w", encoding="utf-8") as handle:
+    print(f"\n5. Saving {len(embeddings_data):,} embeddings to {output_json_path}...")
+    with open(output_json_path, "w", encoding="utf-8") as handle:
         json.dump(embeddings_data, handle)
 
     print("\n" + "=" * 60)
@@ -299,15 +323,19 @@ def process_fsd50k(
 
 def upload_to_pinecone(
     embeddings_data: Optional[list[dict[str, Any]]] = None,
+    fsd50k_root: Path = DEFAULT_FSD50K_ROOT,
+    output_json: Optional[Path] = None,
 ):
     """Upload prepared embeddings to Pinecone index."""
     print("\n6. Uploading to Pinecone...")
 
+    output_json_path = resolve_output_json_path(fsd50k_root, output_json)
+
     if embeddings_data is None:
-        if not DEFAULT_OUTPUT_JSON.exists():
-            raise FileNotFoundError(f"Embeddings JSON not found: {DEFAULT_OUTPUT_JSON}")
-        print(f"   Loading embeddings from {DEFAULT_OUTPUT_JSON}...")
-        with open(DEFAULT_OUTPUT_JSON, "r", encoding="utf-8") as handle:
+        if not output_json_path.exists():
+            raise FileNotFoundError(f"Embeddings JSON not found: {output_json_path}")
+        print(f"   Loading embeddings from {output_json_path}...")
+        with open(output_json_path, "r", encoding="utf-8") as handle:
             embeddings_data = json.load(handle)
 
     print(f"   Total embeddings to upload: {len(embeddings_data):,}")
@@ -357,10 +385,16 @@ def main():
         help="Path containing FSD50K.dev_audio/, FSD50K.eval_audio/, FSD50K.ground_truth/, FSD50K.metadata/",
     )
     parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=None,
+        help="Optional output JSON path. Defaults to <fsd50k-root>_vectors/fsd50k_embeddings.json.",
+    )
+    parser.add_argument(
         "--tags-file",
         type=str,
         default=None,
-        help="Path to text file with tags to exclude (one per line). If not provided, uses hardcoded defaults.",
+        help="Path to text file with tags to exclude (one per line). If not provided, no tag filtering is applied.",
     )
     parser.add_argument(
         "--process-only",
@@ -381,16 +415,24 @@ def main():
     excluded_labels = load_excluded_tags(args.tags_file)
 
     if args.upload_only:
-        upload_to_pinecone()
+        upload_to_pinecone(
+            fsd50k_root=args.fsd50k_root,
+            output_json=args.output_json,
+        )
         return
 
     embeddings_data = process_fsd50k(
         excluded_labels=excluded_labels,
         fsd50k_root=args.fsd50k_root,
+        output_json=args.output_json,
     )
 
     if not args.process_only:
-        upload_to_pinecone(embeddings_data)
+        upload_to_pinecone(
+            embeddings_data,
+            fsd50k_root=args.fsd50k_root,
+            output_json=args.output_json,
+        )
 
 
 if __name__ == "__main__":

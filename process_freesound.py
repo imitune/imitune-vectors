@@ -35,203 +35,9 @@ MAX_DURATION_SECONDS = 20
 CLIP_DURATION_SECONDS = 10  # Extract embeddings from first 10 seconds
 BATCH_SIZE = 64  # For GPU inference
 
-# AudioSet ontology tags to filter out (speech, singing, music related)
-# These are based on the AudioSet ontology - we match against lowercase tag names
-EXCLUDED_TAGS = {
-    # Human voice/speech related
-    "speech",
-    "speaking",
-    "talk",
-    "talking",
-    "voice",
-    "voices",
-    "vocal",
-    "vocals",
-    "male speech",
-    "female speech",
-    "child speech",
-    "man speaking",
-    "woman speaking",
-    "kid speaking",
-    "conversation",
-    "narration",
-    "monologue",
-    "babbling",
-    "speech synthesizer",
-    "shout",
-    "shouting",
-    "scream",
-    "screaming",
-    "yell",
-    "yelling",
-    "whisper",
-    "whispering",
-    "laughter",
-    "laugh",
-    "laughing",
-    "giggle",
-    "chuckle",
-    "cry",
-    "crying",
-    "sobbing",
-    "whimper",
-    "sigh",
-    "humming",
-    "crowd",
-    "chatter",
-    "hubbub",
-    "speech noise",
-    "speech babble",
-    "children shouting",
-    "cheering",
-    # Singing related
-    "singing",
-    "sing",
-    "singer",
-    "song",
-    "vocal music",
-    "a capella",
-    "acapella",
-    "choir",
-    "choral",
-    "yodeling",
-    "chant",
-    "chanting",
-    "mantra",
-    "male singing",
-    "female singing",
-    "child singing",
-    "synthetic singing",
-    "rapping",
-    "rap",
-    "rapper",
-    "beatbox",
-    "beatboxing",
-    "opera",
-    "lullaby",
-    # Music related
-    "music",
-    "musical",
-    "melody",
-    "melodic",
-    "harmonic",
-    "harmony",
-    "instrument",
-    "instrumental",
-    "orchestra",
-    "orchestral",
-    "band",
-    "guitar",
-    "acoustic guitar",
-    "electric guitar",
-    "bass guitar",
-    "piano",
-    "keyboard",
-    "organ",
-    "synthesizer",
-    "synth",
-    "violin",
-    "fiddle",
-    "viola",
-    "cello",
-    "double bass",
-    "string",
-    "trumpet",
-    "trombone",
-    "horn",
-    "french horn",
-    "tuba",
-    "brass",
-    "flute",
-    "clarinet",
-    "oboe",
-    "bassoon",
-    "saxophone",
-    "sax",
-    "woodwind",
-    "drum",
-    "drums",
-    "drummer",
-    "drumming",
-    "percussion",
-    "percussive",
-    "cymbal",
-    "hi-hat",
-    "snare",
-    "kick",
-    "tom",
-    "bass",
-    "beat",
-    "beats",
-    "rhythm",
-    "rhythmic",
-    "chord",
-    "chords",
-    "riff",
-    "solo",
-    "rock",
-    "pop",
-    "jazz",
-    "blues",
-    "classical",
-    "electronic",
-    "techno",
-    "house",
-    "hip-hop",
-    "hip hop",
-    "r&b",
-    "country",
-    "folk",
-    "metal",
-    "punk",
-    "reggae",
-    "soul",
-    "funk",
-    "disco",
-    "edm",
-    "dubstep",
-    "trap",
-    "ambient music",
-    "new age",
-    "world music",
-    "loop",
-    "sample",
-    "bpm",
-    "banjo",
-    "ukulele",
-    "mandolin",
-    "harp",
-    "sitar",
-    "harmonica",
-    "accordion",
-    "bagpipe",
-    "didgeridoo",
-    "xylophone",
-    "marimba",
-    "vibraphone",
-    "glockenspiel",
-    "tubular bells",
-    "timpani",
-    "bongo",
-    "conga",
-    "djembe",
-    "tabla",
-    "jingle",
-    "bell",
-    "chime",
-    "gong",
-    # Music genres/styles (additional)
-    "soundtrack",
-    "score",
-    "composition",
-    "arrangement",
-    "verse",
-    "chorus",
-}
-
 
 def load_excluded_tags(tags_file: Optional[str] = None) -> set[str]:
-    """Load excluded tags from a file or return hardcoded defaults."""
+    """Load excluded tags from a file, or disable filtering when none is provided."""
     if tags_file:
         try:
             with open(tags_file, "r", encoding="utf-8") as f:
@@ -239,16 +45,11 @@ def load_excluded_tags(tags_file: Optional[str] = None) -> set[str]:
             print(f"   Loaded {len(tags)} excluded tags from {tags_file}")
             return tags
         except FileNotFoundError:
-            print(
-                f"   Warning: Tags file {tags_file} not found, using hardcoded defaults"
-            )
+            print(f"   Warning: Tags file {tags_file} not found, filtering disabled")
         except Exception as e:
-            print(
-                f"   Warning: Error loading tags file {tags_file}: {e}, using hardcoded defaults"
-            )
+            print(f"   Warning: Error loading tags file {tags_file}: {e}, filtering disabled")
 
-    # Return hardcoded defaults
-    return EXCLUDED_TAGS
+    return set()
 
 
 def should_exclude(tags: list[str], excluded_tags: set[str]) -> bool:
@@ -415,7 +216,10 @@ def process_dataset(excluded_tags: set[str]):
     print("\n3. Processing and filtering clips...")
     print(f"   - Max duration: {MAX_DURATION_SECONDS}s")
     print(f"   - Clip duration for embedding: {CLIP_DURATION_SECONDS}s")
-    print(f"   - Filtering out speech, singing, and music ({len(excluded_tags)} tags)")
+    if excluded_tags:
+        print(f"   - Filtering enabled with {len(excluded_tags)} excluded tags")
+    else:
+        print("   - Filtering disabled (no tags file provided)")
 
     embeddings_data = []
     batch_waveforms = []
@@ -670,7 +474,7 @@ def main():
         "--tags-file",
         type=str,
         default=None,
-        help="Path to text file with tags to exclude (one per line). If not provided, uses hardcoded defaults.",
+        help="Path to text file with tags to exclude (one per line). If not provided, no tag filtering is applied.",
     )
 
     args = parser.parse_args()
