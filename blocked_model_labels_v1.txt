@@ -1,0 +1,44 @@
+# Broad denylist terms matched against model-predicted class labels.
+# Matching is normalized and substring-based so a term like "speech"
+# will also catch classes such as "Male speech, man speaking".
+
+human voice
+speech
+conversation
+narration
+whispering
+singing
+laughter
+crying
+sobbing
+shout
+scream
+crowd
+cheering
+applause
+clapping
+humming
+rapping
+beatboxing
+human group actions
+human locomotion
+footsteps
+cough
+sneeze
+breathing
+snoring
+heartbeat
+music
+musical instrument
+orchestra
+choir
+song
+drum
+piano
+guitar
+bass guitar
+violin
+brass instrument
+wind instrument
+percussion
+synthesizer

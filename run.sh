@@ -21,4 +21,4 @@ module load cudnn/9.2.0.82-12-cuda-12.6.2-gcc-12.2.0
 module load ffmpeg
 
 cd /data/home/acw777/imitune-vectors
-python process_freesound.py --process-only --tags-file tags_v1.txt
+python process_freesound.py --process-only --blocked-labels-file blocked_model_labels_v1.txt

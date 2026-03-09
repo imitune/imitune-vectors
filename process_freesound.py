@@ -14,8 +14,9 @@ os.environ["HF_AUDIO_DECODER"] = "soundfile"
 
 import getpass
 import json
+from collections import Counter
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import datasets
 import librosa
@@ -26,9 +27,20 @@ from datasets import load_dataset
 from pinecone import Pinecone
 from tqdm import tqdm
 
+from audio_tag_filter import (
+    DEFAULT_BLOCKED_LABELS_PATH,
+    DEFAULT_TAGGER_BATCH_SIZE,
+    DEFAULT_TAGGER_MODEL_ID,
+    DEFAULT_TAGGER_THRESHOLD,
+    MAX_AUDIT_EXAMPLES,
+    AudioTagFilter,
+    load_blocked_labels,
+)
+
 # --- Configuration ---
 MODEL_PATH = Path("model_v1.onnx")
 OUTPUT_JSON = Path("freesound_embeddings.json")
+FILTER_AUDIT_JSON = Path("freesound_filter_audit.json")
 INDEX_NAME = "imitune-search"
 SAMPLE_RATE = 16000  # Standard for audio embeddings
 MAX_DURATION_SECONDS = 20
@@ -189,7 +201,10 @@ def construct_freesound_embed_url(freesound_id: int) -> str:
     return f"https://freesound.org/s/{freesound_id}/"
 
 
-def process_dataset(excluded_tags: set[str]):
+def process_dataset(
+    audio_tag_filter: AudioTagFilter,
+    filter_audit_json: Path = FILTER_AUDIT_JSON,
+):
     """Main processing function."""
     print("=" * 60)
     print("FreeSound-LAION-640k Dataset Processor")
@@ -202,8 +217,15 @@ def process_dataset(excluded_tags: set[str]):
 
     session = create_onnx_session(MODEL_PATH)
 
+    print(f"\n2. Loading audio tagger model: {audio_tag_filter.model_id}")
+    print(f"   Device: {audio_tag_filter.device}")
+    print(f"   Threshold: {audio_tag_filter.threshold}")
+    print(f"   Blocked denylist terms: {len(audio_tag_filter.blocked_terms)}")
+    print(f"   Matched model labels: {len(audio_tag_filter.blocked_model_labels)}")
+    print(f"   Model sample rate: {audio_tag_filter.sample_rate} Hz")
+
     # Load dataset
-    print("\n2. Loading dataset from HuggingFace...")
+    print("\n3. Loading dataset from HuggingFace...")
     print("   Dataset: benjamin-paine/freesound-laion-640k")
 
     dataset = load_dataset(
@@ -213,22 +235,22 @@ def process_dataset(excluded_tags: set[str]):
     ).cast_column("audio", datasets.Audio(sampling_rate=SAMPLE_RATE, decode=True))
 
     # Process and filter
-    print("\n3. Processing and filtering clips...")
+    print("\n4. Processing and filtering clips...")
     print(f"   - Max duration: {MAX_DURATION_SECONDS}s")
     print(f"   - Clip duration for embedding: {CLIP_DURATION_SECONDS}s")
-    if excluded_tags:
-        print(f"   - Filtering enabled with {len(excluded_tags)} excluded tags")
-    else:
-        print("   - Filtering disabled (no tags file provided)")
+    print(f"   - Tagger batch size: {audio_tag_filter.batch_size}")
+    print(f"   - Filter audit JSON: {filter_audit_json}")
 
-    embeddings_data = []
-    batch_waveforms = []
-    batch_metadata = []
+    embeddings_data: list[dict[str, Any]] = []
+    batch_waveforms: list[np.ndarray] = []
+    batch_metadata: list[dict[str, Any]] = []
+    filter_batch_waveforms: list[np.ndarray] = []
+    filter_batch_metadata: list[dict[str, Any]] = []
 
     stats = {
         "total_processed": 0,
         "filtered_duration": 0,
-        "filtered_tags": 0,
+        "filtered_tagger": 0,
         "failed_audio": 0,
         "successful": 0,
         "last_checkpoint": 0,  # Track last checkpoint to avoid duplicate saves
@@ -238,6 +260,113 @@ def process_dataset(excluded_tags: set[str]):
 
     # Create output directory
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    filter_audit_json.parent.mkdir(parents=True, exist_ok=True)
+
+    blocked_label_counts: Counter[str] = Counter()
+    filter_audit: dict[str, Any] = {
+        "model_id": audio_tag_filter.model_id,
+        "threshold": audio_tag_filter.threshold,
+        "blocked_terms": sorted(audio_tag_filter.blocked_terms),
+        "blocked_model_labels": audio_tag_filter.blocked_model_labels,
+        "total_scored": 0,
+        "rejected": 0,
+        "kept": 0,
+        "blocked_label_counts": {},
+        "sample_rejections": [],
+    }
+
+    def save_checkpoint() -> None:
+        with open(OUTPUT_JSON, "w", encoding="utf-8") as handle:
+            json.dump(embeddings_data, handle)
+
+    def save_filter_audit() -> None:
+        filter_audit["blocked_label_counts"] = dict(
+            blocked_label_counts.most_common()
+        )
+        with open(filter_audit_json, "w", encoding="utf-8") as handle:
+            json.dump(filter_audit, handle, indent=2)
+
+    def flush_embedding_batch() -> None:
+        nonlocal batch_waveforms, batch_metadata
+        if not batch_waveforms:
+            return
+
+        try:
+            embeddings = extract_embeddings_batch(session, batch_waveforms)
+            for emb, meta in zip(embeddings, batch_metadata):
+                idx = stats["successful"] + 1
+                embeddings_data.append(
+                    {
+                        "id": f"{idx:012d}",
+                        "embedding": emb.tolist(),
+                        "freesound_url": construct_freesound_url(
+                            meta["username"], meta["freesound_id"]
+                        ),
+                    }
+                )
+                stats["successful"] += 1
+        except Exception as e:
+            print(f"\nError processing batch: {e}")
+        finally:
+            batch_waveforms = []
+            batch_metadata = []
+
+    def _serialize_predictions(
+        predictions: list[Any],
+        limit: int = 3,
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "label": prediction.label,
+                "score": round(float(prediction.score), 6),
+            }
+            for prediction in predictions[:limit]
+        ]
+
+    def flush_filter_batch() -> None:
+        nonlocal filter_batch_waveforms, filter_batch_metadata
+        if not filter_batch_waveforms:
+            return
+
+        results = audio_tag_filter.predict_batch(
+            filter_batch_waveforms,
+            sampling_rate=SAMPLE_RATE,
+        )
+        filter_audit["total_scored"] += len(results)
+
+        for result, waveform, meta in zip(
+            results, filter_batch_waveforms, filter_batch_metadata
+        ):
+            if result.is_blocked:
+                stats["filtered_tagger"] += 1
+                filter_audit["rejected"] += 1
+                for prediction in result.blocked_predictions:
+                    blocked_label_counts[prediction.label] += 1
+
+                if len(filter_audit["sample_rejections"]) < MAX_AUDIT_EXAMPLES:
+                    filter_audit["sample_rejections"].append(
+                        {
+                            "freesound_id": meta["freesound_id"],
+                            "username": meta["username"],
+                            "blocked_predictions": _serialize_predictions(
+                                result.blocked_predictions
+                            ),
+                            "top_predictions": _serialize_predictions(
+                                result.top_predictions,
+                                limit=5,
+                            ),
+                        }
+                    )
+                continue
+
+            filter_audit["kept"] += 1
+            batch_waveforms.append(waveform)
+            batch_metadata.append(meta)
+            if len(batch_waveforms) >= BATCH_SIZE:
+                flush_embedding_batch()
+
+        filter_batch_waveforms = []
+        filter_batch_metadata = []
 
     progress = tqdm(
         dataset,
@@ -251,14 +380,8 @@ def process_dataset(excluded_tags: set[str]):
         stats["total_processed"] += 1
 
         # Get metadata
-        tags = item.get("tags", [])
         username = item.get("username", "")
         freesound_id = item.get("freesound_id", 0)
-
-        # Filter by tags
-        if should_exclude(tags, excluded_tags):
-            stats["filtered_tags"] += 1
-            continue
 
         # Get audio data
         audio_data = item.get("audio", {})
@@ -305,38 +428,17 @@ def process_dataset(excluded_tags: set[str]):
             stats["failed_audio"] += 1
             continue
 
-        # Add to batch
-        batch_waveforms.append(waveform)
-        batch_metadata.append(
+        # Score audio in tagger batches before it reaches the embedding queue
+        filter_batch_waveforms.append(waveform)
+        filter_batch_metadata.append(
             {
                 "username": username,
                 "freesound_id": freesound_id,
             }
         )
 
-        # Process batch when full
-        if len(batch_waveforms) >= BATCH_SIZE:
-            try:
-                embeddings = extract_embeddings_batch(session, batch_waveforms)
-
-                for i, (emb, meta) in enumerate(zip(embeddings, batch_metadata)):
-                    idx = stats["successful"] + 1
-                    embeddings_data.append(
-                        {
-                            "id": f"{idx:012d}",
-                            "embedding": emb.tolist(),
-                            "freesound_url": construct_freesound_url(
-                                meta["username"], meta["freesound_id"]
-                            ),
-                        }
-                    )
-                    stats["successful"] += 1
-
-            except Exception as e:
-                print(f"\nError processing batch: {e}")
-
-            batch_waveforms = []
-            batch_metadata = []
+        if len(filter_batch_waveforms) >= audio_tag_filter.batch_size:
+            flush_filter_batch()
 
         # Update progress with detailed stats
         keep_rate = (
@@ -346,7 +448,7 @@ def process_dataset(excluded_tags: set[str]):
         )
         progress.set_postfix_str(
             f"✓ {stats['successful']:,} kept | "
-            f"✗ {stats['filtered_tags'] + stats['filtered_duration']:,} filtered | "
+            f"✗ {stats['filtered_tagger'] + stats['filtered_duration']:,} filtered | "
             f"⚠ {stats['failed_audio']} failed | "
             f"({keep_rate:.1f}% keep rate)"
         )
@@ -359,35 +461,17 @@ def process_dataset(excluded_tags: set[str]):
             progress.write(
                 f"   💾 Checkpoint: Saving {len(embeddings_data):,} embeddings..."
             )
-            with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-                json.dump(embeddings_data, f)
+            save_checkpoint()
+            save_filter_audit()
             stats["last_checkpoint"] = stats["successful"]
 
-    # Process remaining batch
-    if batch_waveforms:
-        try:
-            embeddings = extract_embeddings_batch(session, batch_waveforms)
-
-            for i, (emb, meta) in enumerate(zip(embeddings, batch_metadata)):
-                idx = stats["successful"] + 1
-                embeddings_data.append(
-                    {
-                        "id": f"{idx:012d}",
-                        "embedding": emb.tolist(),
-                        "freesound_url": construct_freesound_url(
-                            meta["username"], meta["freesound_id"]
-                        ),
-                    }
-                )
-                stats["successful"] += 1
-
-        except Exception as e:
-            print(f"\nError processing final batch: {e}")
+    flush_filter_batch()
+    flush_embedding_batch()
 
     # Save final results
-    print(f"\n4. Saving {len(embeddings_data)} embeddings to {OUTPUT_JSON}...")
-    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-        json.dump(embeddings_data, f)
+    print(f"\n5. Saving {len(embeddings_data)} embeddings to {OUTPUT_JSON}...")
+    save_checkpoint()
+    save_filter_audit()
 
     # Print stats
     print("\n" + "=" * 60)
@@ -395,9 +479,10 @@ def process_dataset(excluded_tags: set[str]):
     print("=" * 60)
     print(f"  Total processed:      {stats['total_processed']:,}")
     print(f"  Filtered (duration):  {stats['filtered_duration']:,}")
-    print(f"  Filtered (tags):      {stats['filtered_tags']:,}")
+    print(f"  Filtered (tagger):    {stats['filtered_tagger']:,}")
     print(f"  Failed audio:         {stats['failed_audio']:,}")
     print(f"  Successful:           {stats['successful']:,}")
+    print(f"  Filter audit JSON:    {filter_audit_json}")
     print("=" * 60)
 
     return embeddings_data
@@ -471,22 +556,70 @@ def main():
         help="Only process dataset, skip Pinecone upload",
     )
     parser.add_argument(
+        "--blocked-labels-file",
+        type=str,
+        default=str(DEFAULT_BLOCKED_LABELS_PATH),
+        help="Path to text file with model output labels/terms to exclude.",
+    )
+    parser.add_argument(
+        "--tagger-model",
+        type=str,
+        default=DEFAULT_TAGGER_MODEL_ID,
+        help="Hugging Face model id for the audio tagger.",
+    )
+    parser.add_argument(
+        "--tagger-threshold",
+        type=float,
+        default=DEFAULT_TAGGER_THRESHOLD,
+        help="Clipwise threshold above which a blocked predicted class rejects the clip.",
+    )
+    parser.add_argument(
+        "--tagger-batch-size",
+        type=int,
+        default=DEFAULT_TAGGER_BATCH_SIZE,
+        help="Batch size for model-based audio tag filtering.",
+    )
+    parser.add_argument(
+        "--filter-audit-json",
+        type=Path,
+        default=FILTER_AUDIT_JSON,
+        help="Where to write the model filter audit summary.",
+    )
+    parser.add_argument(
         "--tags-file",
         type=str,
         default=None,
-        help="Path to text file with tags to exclude (one per line). If not provided, no tag filtering is applied.",
+        help=argparse.SUPPRESS,
     )
 
     args = parser.parse_args()
 
+    blocked_labels_file = args.blocked_labels_file
+    if args.tags_file:
+        print(
+            "Warning: --tags-file is deprecated for FreeSound filtering; "
+            "treating it as --blocked-labels-file."
+        )
+        blocked_labels_file = args.tags_file
+
     if args.upload_only:
         upload_to_pinecone()
-    elif args.process_only:
-        excluded_tags = load_excluded_tags(args.tags_file)
-        process_dataset(excluded_tags)
     else:
-        excluded_tags = load_excluded_tags(args.tags_file)
-        embeddings_data = process_dataset(excluded_tags)
+        blocked_labels = load_blocked_labels(blocked_labels_file)
+        audio_tag_filter = AudioTagFilter(
+            model_id=args.tagger_model,
+            blocked_terms=blocked_labels,
+            threshold=args.tagger_threshold,
+            batch_size=args.tagger_batch_size,
+        )
+        embeddings_data = process_dataset(
+            audio_tag_filter=audio_tag_filter,
+            filter_audit_json=args.filter_audit_json,
+        )
+
+        if args.process_only:
+            return
+
         upload_to_pinecone(embeddings_data)
 
 

@@ -8,6 +8,8 @@ dependencies = [
     "onnxruntime-gpu>=1.16.0; sys_platform != 'darwin' or platform_machine != 'arm64'",
     "onnxruntime>=1.16.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "numpy>=1.24.0",
+    "torch>=2.2.0",
+    "transformers>=4.46.0",
     "tqdm>=4.65.0",
     "pinecone>=3.0.0",
     "soundfile>=0.12.0",
