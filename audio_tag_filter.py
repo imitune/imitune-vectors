@@ -77,11 +77,18 @@ class AudioPrediction:
 @dataclass(frozen=True)
 class AudioTagFilterResult:
     top_predictions: list[AudioPrediction]
-    blocked_predictions: list[AudioPrediction]
+    matched_predictions: list[AudioPrediction]
 
-    @property
-    def is_blocked(self) -> bool:
-        return bool(self.blocked_predictions)
+    def blocked_predictions(self, threshold: float) -> list[AudioPrediction]:
+        """Return denylist-matched predictions above the supplied threshold."""
+        return [
+            prediction
+            for prediction in self.matched_predictions
+            if prediction.score >= threshold
+        ]
+
+    def is_blocked(self, threshold: float) -> bool:
+        return any(prediction.score >= threshold for prediction in self.matched_predictions)
 
 
 class AudioTagFilter:
@@ -174,25 +181,24 @@ class AudioTagFilter:
                 for index in top_indices
             ]
 
-            blocked_indices = [
+            matched_indices = [
                 index
                 for index, score in enumerate(row)
-                if score >= self.threshold
-                and _matches_blocked_term(
+                if _matches_blocked_term(
                     self.normalized_id2label[index],
                     self.blocked_terms,
                 )
             ]
-            blocked_indices.sort(key=lambda index: row[index], reverse=True)
-            blocked_predictions = [
+            matched_indices.sort(key=lambda index: row[index], reverse=True)
+            matched_predictions = [
                 AudioPrediction(label=self.id2label[index], score=float(row[index]))
-                for index in blocked_indices
+                for index in matched_indices
             ]
 
             results.append(
                 AudioTagFilterResult(
                     top_predictions=top_predictions,
-                    blocked_predictions=blocked_predictions,
+                    matched_predictions=matched_predictions,
                 )
             )
 
