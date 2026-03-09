@@ -21,6 +21,7 @@ process-freesound = "process_freesound:main"
 process-fsd50k = "process_fsd50k:main"
 test-freesound-urls = "test_urls:main"
 check-freesound-urls = "check_freesound_urls:main"
+analyze-embeddings = "analyze_embeddings:main"
 
 [tool.uv]
 dev-dependencies = []
