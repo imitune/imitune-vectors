@@ -359,10 +359,6 @@ def upload_to_pinecone(
                 "values": item["embedding"],
                 "metadata": {
                     "freesound_url": item.get("freesound_url", ""),
-                    "freesound_id": item.get("freesound_id", 0),
-                    "split": item.get("split", ""),
-                    "labels": item.get("labels", []),
-                    "uploader": item.get("uploader", ""),
                 },
             }
             for item in batch
