@@ -39,10 +39,11 @@ from audio_tag_filter import (
 
 # --- Configuration ---
 MODEL_PATH = Path("model_v1.onnx")
-OUTPUT_JSON = Path("freesound_embeddings.json")
-TAG_RESULTS_JSONL = Path("freesound_tag_results.jsonl")
-TAG_AUDIT_JSON = Path("freesound_tagging_audit.json")
-FILTER_AUDIT_JSON = Path("freesound_filter_audit.json")
+OUTPUTS_DIR = Path("outputs")
+OUTPUT_JSON = OUTPUTS_DIR / "freesound_embeddings.json"
+TAG_RESULTS_JSONL = OUTPUTS_DIR / "freesound_tag_results.jsonl"
+TAG_AUDIT_JSON = OUTPUTS_DIR / "freesound_tagging_audit.json"
+FILTER_AUDIT_JSON = OUTPUTS_DIR / "freesound_filter_audit.json"
 INDEX_NAME = "imitune-search"
 SAMPLE_RATE = 16000  # Standard for audio embeddings
 MAX_DURATION_SECONDS = 20

@@ -7,13 +7,13 @@ This adds a separate pipeline for the packaged FSD50K release and uploads to a d
 Submit the downloader job:
 
 ```bash
-sbatch download_fsd50k.sh
+sbatch scripts/download_fsd50k.sh
 ```
 
 Optional overrides at submit time:
 
 ```bash
-sbatch --export=ALL,SCRATCH_ROOT=/gpfs/scratch/$USER,TARGET_DIR=/gpfs/scratch/$USER/FSD50K download_fsd50k.sh
+sbatch --export=ALL,SCRATCH_ROOT=/gpfs/scratch/$USER,TARGET_DIR=/gpfs/scratch/$USER/FSD50K scripts/download_fsd50k.sh
 ```
 
 This produces an extracted dataset root at `TARGET_DIR` containing:
@@ -59,26 +59,26 @@ python process_fsd50k.py --fsd50k-root /path/to/FSD50K
 ```bash
 python process_fsd50k.py \
   --fsd50k-root /path/to/FSD50K \
-  --tags-file tags_v1.txt \
+  --tags-file config/tags_v1.txt \
   --process-only
 ```
 
 ## HPC job
 
-Use `run_fsd50k.sh` and set environment variables before `sbatch` if needed:
+Use `scripts/run_fsd50k.sh` and set environment variables before `sbatch` if needed:
 
 ```bash
 export FSD50K_ROOT=/gpfs/scratch/$USER/FSD50K
 export MODE=full
-sbatch run_fsd50k.sh
+sbatch scripts/run_fsd50k.sh
 ```
 
-`run_fsd50k.sh` defaults to `gpushort` with `1:0:0` walltime (short queue).
+`scripts/run_fsd50k.sh` defaults to `gpushort` with `1:0:0` walltime (short queue).
 
 For long GPU runs on Apocrita, use the restricted pair from QMUL docs:
 
 ```bash
-sbatch -p gpu -A pilot_gpu -t 72:0:0 run_fsd50k.sh
+sbatch -p gpu -A pilot_gpu -t 72:0:0 scripts/run_fsd50k.sh
 ```
 
 The script uses QMUL's standard single-GPU template: `-p gpushort`, `-n 8`, `--gres=gpu:1`, `--mem-per-cpu=11G`.
@@ -86,7 +86,7 @@ The script uses QMUL's standard single-GPU template: `-p gpushort`, `-n 8`, `--g
 If your group has access to the restricted GPU partition/account pair, submit with:
 
 ```bash
-sbatch -p gpu -A pilot_gpu run_fsd50k.sh
+sbatch -p gpu -A pilot_gpu scripts/run_fsd50k.sh
 ```
 
 If you get `Invalid account or account/partition combination specified`, your account is not valid for that partition. Use the default script submission (`gpushort`) or your group's allowed `-p/-A` combination.

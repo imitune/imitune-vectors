@@ -13,7 +13,9 @@ import torch
 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
 DEFAULT_TAGGER_MODEL_ID = "MIT/ast-finetuned-audioset-16-16-0.442"
-DEFAULT_BLOCKED_LABELS_PATH = Path(__file__).with_name("blocked_model_labels_v1.txt")
+DEFAULT_BLOCKED_LABELS_PATH = (
+    Path(__file__).resolve().parent / "config" / "blocked_model_labels_v1.txt"
+)
 DEFAULT_TAGGER_THRESHOLD = 0.25
 DEFAULT_TAGGER_BATCH_SIZE = 16
 MAX_AUDIT_EXAMPLES = 100

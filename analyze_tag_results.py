@@ -10,7 +10,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Optional
 
-DEFAULT_TAG_RESULTS_JSONL = Path("freesound_tag_results.jsonl")
+DEFAULT_OUTPUTS_DIR = Path("outputs")
+DEFAULT_TAG_RESULTS_JSONL = DEFAULT_OUTPUTS_DIR / "freesound_tag_results.jsonl"
 DEFAULT_THRESHOLDS = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
 
@@ -236,6 +237,7 @@ def write_html_report(
     top_labels: int,
 ) -> None:
     """Generate an HTML review interface for threshold tuning."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     sections: list[str] = []
     scope_label = (
         f"{len(filter_labels)} exact filter labels"

@@ -1,5 +1,5 @@
 # Exact matched model labels to use at embedding-time filtering.
-# These are a more conservative subset than blocked_model_labels_v1.txt.
+# These are a more conservative subset than config/blocked_model_labels_v1.txt.
 # Edit freely based on analyze_tag_results.py output.
 
 # Human voice / speech
