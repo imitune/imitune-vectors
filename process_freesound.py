@@ -283,15 +283,36 @@ def load_tag_results(tag_results_jsonl: Path) -> dict[str, dict[str, Any]]:
     return results
 
 
+def load_filter_labels(filter_labels_file: Optional[str] = None) -> Optional[set[str]]:
+    """Load exact matched model labels to use at embedding-time filtering."""
+    if not filter_labels_file:
+        return None
+
+    labels: set[str] = set()
+    with open(filter_labels_file, "r", encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            labels.add(stripped)
+
+    if not labels:
+        raise ValueError(f"Filter labels file is empty: {filter_labels_file}")
+
+    return labels
+
+
 def blocked_predictions_from_record(
     record: dict[str, Any],
     threshold: float,
+    filter_labels: Optional[set[str]] = None,
 ) -> list[dict[str, Any]]:
     """Return saved matched predictions above threshold."""
     return [
         prediction
         for prediction in record.get("matched_predictions", [])
         if float(prediction["score"]) >= threshold
+        and (filter_labels is None or prediction["label"] in filter_labels)
     ]
 
 
@@ -441,6 +462,7 @@ def process_dataset(
     filter_threshold: float = DEFAULT_TAGGER_THRESHOLD,
     filter_audit_json: Path = FILTER_AUDIT_JSON,
     embedding_batch_size: int = BATCH_SIZE,
+    filter_labels: Optional[set[str]] = None,
 ) -> list[dict[str, Any]]:
     """Extract embeddings using previously saved tagger results for filtering."""
     print("=" * 60)
@@ -456,6 +478,10 @@ def process_dataset(
     tag_results = load_tag_results(tag_results_jsonl)
     print(f"   Loaded {len(tag_results):,} tagged clips")
     print(f"   Filter threshold: {filter_threshold}")
+    if filter_labels is None:
+        print("   Filter labels: all saved matched labels")
+    else:
+        print(f"   Filter labels: {len(filter_labels)} exact labels")
 
     print("\n3. Loading dataset from HuggingFace...")
     print("   Dataset: benjamin-paine/freesound-laion-640k")
@@ -488,6 +514,7 @@ def process_dataset(
     filter_audit: dict[str, Any] = {
         "tag_results_jsonl": str(tag_results_jsonl),
         "threshold": filter_threshold,
+        "filter_labels": sorted(filter_labels) if filter_labels is not None else None,
         "total_scored": 0,
         "rejected": 0,
         "kept": 0,
@@ -555,7 +582,11 @@ def process_dataset(
             continue
 
         filter_audit["total_scored"] += 1
-        blocked_predictions = blocked_predictions_from_record(record, filter_threshold)
+        blocked_predictions = blocked_predictions_from_record(
+            record,
+            filter_threshold,
+            filter_labels=filter_labels,
+        )
         if blocked_predictions:
             stats["filtered_tagger"] += 1
             filter_audit["rejected"] += 1
@@ -745,6 +776,12 @@ def main():
         help="Where to write the model filter audit summary.",
     )
     parser.add_argument(
+        "--filter-labels-file",
+        type=str,
+        default=None,
+        help="Optional file with exact saved matched labels to use during embedding-time filtering.",
+    )
+    parser.add_argument(
         "--retag",
         action="store_true",
         help="Force regeneration of the tag results file before embedding extraction.",
@@ -781,11 +818,13 @@ def main():
         return
 
     if args.process_only:
+        filter_labels = load_filter_labels(args.filter_labels_file)
         process_dataset(
             tag_results_jsonl=args.tag_results_jsonl,
             filter_threshold=args.tagger_threshold,
             filter_audit_json=args.filter_audit_json,
             embedding_batch_size=args.embedding_batch_size,
+            filter_labels=filter_labels,
         )
         return
 
@@ -809,11 +848,13 @@ def main():
     if args.tag_only:
         return
 
+    filter_labels = load_filter_labels(args.filter_labels_file)
     embeddings_data = process_dataset(
         tag_results_jsonl=args.tag_results_jsonl,
         filter_threshold=args.tagger_threshold,
         filter_audit_json=args.filter_audit_json,
         embedding_batch_size=args.embedding_batch_size,
+        filter_labels=filter_labels,
     )
     upload_to_pinecone(embeddings_data)
 

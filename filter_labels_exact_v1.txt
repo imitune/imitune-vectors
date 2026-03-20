@@ -1,0 +1,66 @@
+# Exact matched model labels to use at embedding-time filtering.
+# These are a more conservative subset than blocked_model_labels_v1.txt.
+# Edit freely based on analyze_tag_results.py output.
+
+# Human voice / speech
+Speech
+Male speech, man speaking
+Female speech, woman speaking
+Child speech, kid speaking
+Narration, monologue
+Conversation
+Hubbub, speech noise, speech babble
+Whispering
+
+# Human vocalizations
+Singing
+Male singing
+Female singing
+Child singing
+Choir
+Humming
+Rapping
+Beatboxing
+Laughter
+Crying, sobbing
+
+# Human group / body sounds
+Crowd
+Cheering
+Applause
+Clapping
+Walk, footsteps
+Breathing
+Cough
+Sneeze
+Snoring
+Heart sounds, heartbeat
+
+# Music / instruments
+Music
+Background music
+Independent music
+Classical music
+Electronic music
+Electronic dance music
+Hip hop music
+House music
+Pop music
+Rock music
+Ambient music
+Music of Latin America
+Musical instrument
+Acoustic guitar
+Electric guitar
+Bass guitar
+Piano
+Electric piano
+Drum
+Drum kit
+Drum machine
+Drum and bass
+Percussion
+Mallet percussion
+Brass instrument
+Orchestra
+Synthesizer
