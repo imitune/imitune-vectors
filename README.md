@@ -1,6 +1,6 @@
-# ThatSoundLikeMe vectors
+# ThatSoundsLikeMe vectors
 
-Small scripts for building and uploading audio embedding subsets for ThatSoundLikeMe.
+Small scripts for building and uploading audio embedding subsets for ThatSoundsLikeMe.
 
 ## Production indexes
 

@@ -1,4 +1,4 @@
-# FSD50K workflow for ThatSoundLikeMe vectors
+# FSD50K workflow for ThatSoundsLikeMe vectors
 
 This adds a separate pipeline for the packaged FSD50K release and uploads to a dedicated Pinecone index (`imitune-fsd50k`).
 
