@@ -1,6 +1,6 @@
-# imitune-vectors
+# ThatSoundLikeMe vectors
 
-Small scripts for building and uploading audio embedding subsets for ImiTune.
+Small scripts for building and uploading audio embedding subsets for ThatSoundLikeMe.
 
 ## Production indexes
 
