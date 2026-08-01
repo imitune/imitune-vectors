@@ -1,7 +1,7 @@
 [project]
-name = "imitune-db-manager"
+name = "thatsoundslikeme-vectors"
 version = "0.1.0"
-description = "Dataset processing and embedding extraction for ImiTune"
+description = "Dataset processing and embedding extraction for ThatSoundsLikeMe"
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "datasets<=3.0.0",
