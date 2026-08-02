@@ -1,6 +1,18 @@
 # ThatSoundsLikeMe vectors
 
-Small scripts for building and uploading audio embedding subsets for ThatSoundsLikeMe.
+Small scripts for building and uploading audio embedding subsets for
+ThatSoundsLikeMe. The project is MIT licensed and maintained as part of an
+academic research application from researchers at Queen Mary University of
+London, supported by UK Research and Innovation (grant EP/S022694/1).
+
+The bundled query-by-vocal-imitation model was developed from the team's
+first-place entry in the [Audio Engineering Society
+(AES)](https://aes2.org/) [AIMLA Querying by Vocal Imitation Challenge
+2025](https://qvim-aes.github.io/#results). The resulting application won
+[Best app for Muse Hub and the Other challenge at the 2025 London Music
+Technology Hackathon](https://devpost.com/software/imitune). See the
+[model card](MODEL_CARD.md) for the exported ONNX artifact's identity, intended
+use and limitations.
 
 ## Production indexes
 
